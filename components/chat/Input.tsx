@@ -10,12 +10,8 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 export default function ChatInput() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const {
-    currentConversation,
-    addNewConversation,
-    invalidateMessagesCache,
-    user,
-  } = useChatContext();
+  const { currentConversation, addNewConversation, invalidateMessagesCache } =
+    useChatContext();
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
 
@@ -28,37 +24,6 @@ export default function ChatInput() {
       }
     };
   }, [currentConversation?._id]);
-
-  const analyzeMessage = async (
-    message: string,
-    token: string,
-    signal: AbortSignal
-  ) => {
-    try {
-      const response = await fetch("/api/chat/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message,
-          userInfo: user?.userInfo || [],
-        }),
-        signal,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to analyze message");
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("Analysis aborted");
-      } else {
-        console.error("Error analyzing message:", error);
-      }
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     if (isLoading) return;
@@ -75,7 +40,38 @@ export default function ChatInput() {
     // Create new abort controller for this request
     activeRequestRef.current = new AbortController();
 
+    const tempId = `temp-${Date.now()}`;
+    // Immediately add user message to UI
+    const userMessage = {
+      _id: tempId,
+      content: message,
+      role: "user" as const,
+      createdAt: new Date().toISOString(),
+      conversationId: currentConversation?._id || "",
+    };
+    window.dispatchEvent(
+      new CustomEvent("newMessage", { detail: userMessage })
+    );
+
+    // Clear the message input early to improve UX
+    const currentMessage = message;
+    setMessage("");
+    inputRef.current?.focus();
+
     try {
+      await fetch("/api/chat/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: currentMessage,
+          conversationId: currentConversation?._id,
+        }),
+        signal: activeRequestRef.current.signal,
+      });
+
       const messageResponse = await fetch("/api/chat/message", {
         method: "POST",
         headers: {
@@ -83,46 +79,81 @@ export default function ChatInput() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          message,
+          message: currentMessage,
           conversationId: currentConversation?._id,
         }),
         signal: activeRequestRef.current.signal,
       });
 
-      if (!messageResponse.ok) throw new Error("Failed to send message");
-
-      const responseData = await messageResponse.json();
-      if (responseData.newConversation) {
-        addNewConversation(responseData.newConversation);
+      if (!messageResponse.ok) {
+        const error = await messageResponse.json();
+        throw new Error(error.error || "Failed to send message");
       }
 
-      const streamResponse = await fetch("/api/chat/stream", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message,
-          conversationId:
-            responseData.newConversation?._id || currentConversation?._id,
-          userInfo: user?.userInfo || [],
-        }),
-        signal: activeRequestRef.current.signal,
-      });
+      // Handle new conversation creation
+      let conversationId = currentConversation?._id;
+      if (!conversationId) {
+        const responseData = await messageResponse.json();
+        if (responseData.newConversation) {
+          addNewConversation(responseData.newConversation);
+          conversationId = responseData.newConversation._id;
+        }
+      }
 
-      if (!streamResponse.ok) throw new Error("Failed to stream response");
+      // Handle streaming for all conversations
+      if (!messageResponse.body) {
+        throw new Error("No response body received");
+      }
 
-      const reader = streamResponse.body?.getReader();
-      if (!reader) throw new Error("No reader available");
+      await handleStreamingResponse(
+        messageResponse.body,
+        conversationId || "",
+        tempId
+      );
 
-      // Clear the message input early to improve UX
-      setMessage("");
-      inputRef.current?.focus();
+      // Invalidate the messages cache for this conversation after streaming is complete
+      if (conversationId) {
+        invalidateMessagesCache(conversationId);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        console.log("Request aborted");
+      } else {
+        console.error("Error sending message:", error);
+        // Remove temporary messages on error
+        window.dispatchEvent(
+          new CustomEvent("removeMessage", { detail: { id: tempId } })
+        );
+      }
+    } finally {
+      activeRequestRef.current = null;
+      setIsLoading(false);
+    }
+  };
 
-      const decoder = new TextDecoder();
-      let buffer = "";
+  // Helper function to handle streaming responses
+  const handleStreamingResponse = async (
+    responseBody: ReadableStream<Uint8Array>,
+    conversationId: string,
+    tempUserId: string
+  ) => {
+    const reader = responseBody.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
+    // Create a temporary message for streaming
+    const tempAssistantMessage = {
+      _id: `temp-assistant-${Date.now()}`,
+      content: "",
+      role: "assistant" as const,
+      createdAt: new Date().toISOString(),
+      conversationId: conversationId,
+    };
+    window.dispatchEvent(
+      new CustomEvent("newMessage", { detail: tempAssistantMessage })
+    );
+
+    try {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -130,48 +161,41 @@ export default function ChatInput() {
         const text = decoder.decode(value);
         buffer += text;
 
-        // Process complete messages
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // Keep the last incomplete line in the buffer
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              // Dispatch event with both message and userInfo
-              const event = new CustomEvent("newMessage", {
-                detail: {
-                  content: JSON.stringify(data),
-                  role: "assistant",
-                  _id: Date.now().toString(),
-                  createdAt: new Date().toISOString(),
-                  conversationId:
-                    responseData.newConversation?._id ||
-                    currentConversation?._id ||
-                    "",
-                },
-              });
-              window.dispatchEvent(event);
-            } catch (error) {
-              console.error("Error parsing stream data:", error);
-            }
-          }
-        }
+        // Update the assistant message with current content
+        const updatedAssistantMessage = {
+          ...tempAssistantMessage,
+          content: buffer,
+        };
+        window.dispatchEvent(
+          new CustomEvent("updateMessage", {
+            detail: updatedAssistantMessage,
+          })
+        );
       }
-
-      // Invalidate the messages cache for this conversation
-      invalidateMessagesCache(
-        responseData.newConversation?._id || currentConversation?._id || ""
-      );
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("Request aborted");
-      } else {
-        console.error("Error sending message:", error);
-      }
+      console.error("Error processing stream:", error);
+      // Remove temporary messages on error
+      window.dispatchEvent(
+        new CustomEvent("removeMessage", {
+          detail: {
+            id: tempAssistantMessage._id,
+            userMessageId: tempUserId,
+          },
+        })
+      );
     } finally {
-      activeRequestRef.current = null;
-      setIsLoading(false);
+      // Ensure the final message is displayed even if there's an error
+      if (buffer) {
+        const finalMessage = {
+          ...tempAssistantMessage,
+          content: buffer,
+        };
+        window.dispatchEvent(
+          new CustomEvent("updateMessage", {
+            detail: finalMessage,
+          })
+        );
+      }
     }
   };
 
@@ -199,9 +223,7 @@ export default function ChatInput() {
             className="hover:bg-gray-100 disabled:opacity-50 transition-all duration-300 relative"
           >
             {isLoading ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <LoadingScreen size="small" />
-              </div>
+              <LoadingScreen size="small" />
             ) : (
               <ArrowRight className="w-5 h-5 text-gray-500" />
             )}

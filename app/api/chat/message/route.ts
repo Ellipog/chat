@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import Conversation from "@/models/Conversation";
 import User from "@/models/User";
 import { z } from "zod";
+import { OpenAIStream } from "@/lib/openAIStream";
 
 // Request validation schema
 const messageSchema = z.object({
@@ -63,82 +64,104 @@ export async function POST(req: Request) {
           {
             role: "system",
             content:
-              "Extract a concise 2-4 word topic from the user's message that captures the main subject. Return only the topic, no additional text or punctuation.",
+              "Extract a topic from the user's message that captures the main subject. Return only the topic, no additional text or punctuation. Proper capitalization is important.",
           },
           {
             role: "user",
             content: message,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 10,
+        temperature: 0.7,
       });
 
       const topic =
         topicResponse.choices[0].message.content?.trim() || "New Chat";
 
-      // Create new conversation with retry logic
-      for (let i = 0; i < 3; i++) {
-        try {
-          newConversation = await Conversation.create({
-            user: decoded.id,
-            title: topic,
-            lastMessageAt: new Date(),
-          });
-          currentConversationId = newConversation._id;
-          break;
-        } catch (error) {
-          if (i === 2) throw error;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-    } else {
-      // Update last message timestamp for existing conversation
-      await Conversation.findByIdAndUpdate(currentConversationId, {
+      // Create new conversation
+      newConversation = await Conversation.create({
+        user: decoded.id,
+        title: topic,
         lastMessageAt: new Date(),
+      });
+      currentConversationId = newConversation._id;
+
+      // Create initial user message
+      await Message.create({
+        user: decoded.id,
+        conversationId: currentConversationId,
+        content: message,
+        role: "user",
+        createdAt: new Date(),
       });
     }
 
-    // Create user message with retry logic
-    for (let i = 0; i < 3; i++) {
-      try {
-        await Message.create({
-          user: decoded.id,
-          conversationId: currentConversationId,
-          content: message,
-          role: "user",
-          createdAt: new Date(),
-        });
-        break;
-      } catch (error) {
-        if (i === 2) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
+    // For existing conversations or follow-up requests for new conversations
+    if (!newConversation) {
+      // Create user message
+      await Message.create({
+        user: decoded.id,
+        conversationId: currentConversationId,
+        content: message,
+        role: "user",
+        createdAt: new Date(),
+      });
     }
 
-    // Trigger message analysis in the background
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      `http://localhost:${process.env.PORT || 3000}`;
-    fetch(`${baseUrl}/api/chat/analyze`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    // Get conversation history
+    const messageHistory = await Message.find({
+      conversationId: currentConversationId,
+    }).sort({ createdAt: 1 });
+
+    // Format messages for OpenAI
+    const messages = [
+      {
+        role: "system",
+        content: `You are a helpful AI assistant. The user has provided the following information about themselves: ${
+          user.userInfo
+            ? JSON.stringify(user.userInfo)
+            : "No additional info provided"
+        }`,
       },
-      body: JSON.stringify({
-        message,
-        userInfo: user.userInfo || [],
-      }),
-    }).catch((error) => {
-      console.error("Background analysis failed:", error);
+      ...messageHistory.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+    ];
+
+    // Create streaming response
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages,
+      stream: true,
+      temperature: 0.7,
     });
 
-    return NextResponse.json({
-      success: true,
-      newConversation,
-      conversationId: currentConversationId,
-    });
+    // Stream the response
+    const stream = OpenAIStream(
+      response,
+      user.userInfo || [],
+      async (fullContent: string) => {
+        try {
+          // Save assistant's message after completion
+          await Message.create({
+            user: decoded.id,
+            conversationId: currentConversationId,
+            content: fullContent,
+            role: "assistant",
+            createdAt: new Date(),
+          });
+
+          // Update conversation's lastMessageAt
+          await Conversation.findByIdAndUpdate(currentConversationId, {
+            lastMessageAt: new Date(),
+          });
+        } catch (error) {
+          console.error("Error saving assistant message:", error);
+        }
+      }
+    );
+
+    return new Response(stream);
   } catch (error) {
     console.error("Error in message route:", error);
     const err = error as Error;

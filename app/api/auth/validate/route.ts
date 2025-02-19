@@ -27,6 +27,7 @@ export async function GET(req: Request) {
         id: user._id,
         name: user.name,
         email: user.email,
+        userInfo: user.userInfo,
       },
     });
   } catch {

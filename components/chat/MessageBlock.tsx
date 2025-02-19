@@ -5,45 +5,14 @@ import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Copy, Check } from "lucide-react";
 import { useState } from "react";
 
-const tryParseJSON = (content: string) => {
-  try {
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-};
-
-interface AnalysisResult {
-  category: string;
-  info: string;
-}
-
 export default function MessageBlock({ message }: { message: Message }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    const content =
-      message.role === "assistant"
-        ? tryParseJSON(message.content)?.message || message.content
-        : message.content;
-    await navigator.clipboard.writeText(content);
+    await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const getDisplayContent = () => {
-    if (message.role === "user") return message.content;
-    const parsed = tryParseJSON(message.content);
-    return parsed ? parsed.message : message.content;
-  };
-
-  const getAnalysisResults = () => {
-    if (message.role !== "assistant") return null;
-    const parsed = tryParseJSON(message.content);
-    return parsed?.userInfo || null;
-  };
-
-  const analysisResults = getAnalysisResults();
 
   return (
     <div
@@ -73,29 +42,15 @@ export default function MessageBlock({ message }: { message: Message }) {
         )}
         <div>
           {message.role === "assistant" ? (
-            <Markdown content={getDisplayContent()} />
+            <Markdown content={message.content} />
           ) : (
             message.content
-          )}
-          {analysisResults && analysisResults.length > 0 && (
-            <div className="mt-2 text-sm text-gray-500">
-              <p className="font-semibold">New Information Detected:</p>
-              <ul className="list-disc list-inside">
-                {analysisResults.map((info: AnalysisResult, index: number) => (
-                  <li key={index}>
-                    <span className="font-medium">{info.category}:</span>{" "}
-                    {info.info}
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
         </div>
       </div>
     </div>
   );
 }
-
 function Markdown({ content }: { content: string }) {
   return (
     <ReactMarkdown

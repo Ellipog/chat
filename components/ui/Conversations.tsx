@@ -20,6 +20,7 @@ export default function Conversations() {
     cachedConversations,
     setCachedConversations,
     invalidateConversationsCache,
+    setCachedMessages,
   } = useChatContext();
 
   const fetchConversations = async () => {
@@ -95,6 +96,20 @@ export default function Conversations() {
     if (!token) return;
 
     try {
+      // Optimistically update UI first
+      if (currentConversation?._id === id) {
+        setCurrentConversation(null);
+      }
+      setCachedConversations(
+        cachedConversations.filter((conv) => conv._id !== id)
+      );
+      // Clear messages cache for the deleted conversation
+      setCachedMessages((prev) => {
+        const newCache = { ...prev };
+        delete newCache[id];
+        return newCache;
+      });
+
       const response = await fetch(`/api/chat/conversations/${id}`, {
         method: "DELETE",
         headers: {
@@ -102,16 +117,30 @@ export default function Conversations() {
         },
       });
 
-      if (response.ok) {
-        if (currentConversation?._id === id) {
-          setCurrentConversation(null);
-        }
-        setCachedConversations(
-          cachedConversations.filter((conv) => conv._id !== id)
+      if (!response.ok) {
+        // If delete fails, revert the optimistic updates
+        const prevConversation = cachedConversations.find(
+          (conv) => conv._id === id
         );
+        if (prevConversation) {
+          setCachedConversations([...cachedConversations]);
+          if (currentConversation?._id === id) {
+            setCurrentConversation(prevConversation);
+          }
+        }
       }
     } catch (error) {
       console.error("Error deleting conversation:", error);
+      // Revert optimistic updates on error
+      const prevConversation = cachedConversations.find(
+        (conv) => conv._id === id
+      );
+      if (prevConversation) {
+        setCachedConversations([...cachedConversations]);
+        if (currentConversation?._id === id) {
+          setCurrentConversation(prevConversation);
+        }
+      }
     }
   };
 

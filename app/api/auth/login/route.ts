@@ -36,6 +36,7 @@ export async function POST(req: Request) {
         id: user._id,
         name: user.name,
         email: user.email,
+        userInfo: user.userInfo,
       },
     });
   } catch {

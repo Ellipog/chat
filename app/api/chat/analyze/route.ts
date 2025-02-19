@@ -55,9 +55,10 @@ export async function POST(req: Request) {
           role: "system",
           content: `You are an AI designed to extract personal information from messages. 
           Look for new, factual information about the user that isn't already in their profile.
-          Return a JSON array of objects with 'category' and 'info' fields, or an empty array if no new information is found.
-          Categories should be specific but reusable (e.g., "occupation", "location", "hobby", "family", "education", etc.).
-          Only extract factual, concrete information, not opinions or temporary states.
+          You must respond with ONLY a JSON array of objects with 'category' and 'info' fields, or an empty array if no new information is found.
+          Example response format: [{"category": "Occupation", "info": "Software Engineer"}] or []
+          Categories should be specific but reusable (e.g., "Occupation", "Location", "Hobby", "Family", "Education", etc.).
+          Only extract factual, concrete information, not opinions or temporary states. Proper capitalization is important.
           Current user info: ${JSON.stringify(userInfo)}`,
         },
         {
@@ -66,7 +67,6 @@ export async function POST(req: Request) {
         },
       ],
       temperature: 0.1,
-      response_format: { type: "json_object" },
     });
 
     const analysisContent = analysisResponse.choices[0].message.content;
@@ -74,12 +74,8 @@ export async function POST(req: Request) {
 
     try {
       if (analysisContent) {
-        const parsedContent = JSON.parse(analysisContent);
-        newInfo = Array.isArray(parsedContent)
-          ? parsedContent
-          : Array.isArray(parsedContent.information)
-          ? parsedContent.information
-          : [];
+        const parsedContent = JSON.parse(analysisContent.trim());
+        newInfo = Array.isArray(parsedContent) ? parsedContent : [];
       }
     } catch (error) {
       console.error("Error parsing analysis response:", error);

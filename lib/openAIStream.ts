@@ -15,11 +15,14 @@ export function OpenAIStream(
   let completeContent = "";
   let lastFlushTime = Date.now();
   const FLUSH_INTERVAL = 100; // Flush every 100ms
+  let isComplete = false;
 
   return new ReadableStream({
     async start(controller) {
       try {
         for await (const chunk of response) {
+          if (isComplete) break;
+
           const content = chunk.choices[0]?.delta?.content || "";
           if (!content) continue;
 
@@ -32,16 +35,7 @@ export function OpenAIStream(
             currentTime - lastFlushTime >= FLUSH_INTERVAL ||
             content.match(/[.!?]\s*$/)
           ) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  message: buffer,
-                  userInfo: analysisResults,
-                  isPartial: true,
-                })}\n\n`
-              )
-            );
-
+            controller.enqueue(encoder.encode(buffer));
             lastFlushTime = currentTime;
             buffer = "";
           }
@@ -49,27 +43,8 @@ export function OpenAIStream(
 
         // Flush any remaining content
         if (buffer) {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({
-                message: buffer,
-                userInfo: analysisResults,
-                isPartial: false,
-              })}\n\n`
-            )
-          );
+          controller.enqueue(encoder.encode(buffer));
         }
-
-        // Signal completion
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              message: completeContent,
-              userInfo: analysisResults,
-              isComplete: true,
-            })}\n\n`
-          )
-        );
 
         // Process complete response if callback provided
         if (onComplete && completeContent) {
@@ -77,35 +52,22 @@ export function OpenAIStream(
             await onComplete(completeContent);
           } catch (error) {
             console.error("Error in completion callback:", error);
-            throw error; // Re-throw to be caught by the outer try-catch
+            // Don't throw here, as we still want to close the stream properly
           }
         }
 
+        isComplete = true;
         controller.close();
       } catch (error) {
         console.error("Error in stream processing:", error);
-
-        // Try to send error to client
-        try {
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({
-                error: "Stream processing failed",
-                details:
-                  error instanceof Error ? error.message : "Unknown error",
-              })}\n\n`
-            )
-          );
-        } catch {
-          // If we can't send the error, just close the stream
-        }
-
+        isComplete = true;
         controller.error(error);
       }
     },
 
     cancel() {
-      // Clean up resources if needed
+      // Clean up resources and mark as complete
+      isComplete = true;
       buffer = "";
       completeContent = "";
     },

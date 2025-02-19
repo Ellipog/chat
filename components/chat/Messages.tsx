@@ -7,96 +7,125 @@ import { Message } from "@/types/chat";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { motion } from "framer-motion";
 
-type MessageCache = { [conversationId: string]: Message[] };
-
 export default function ChatMessages() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const previousConversationId = useRef<string | null>(null);
 
-  const {
-    currentConversation,
-    cachedMessages,
-    setCachedMessages,
-    invalidateMessagesCache,
-  } = useChatContext();
+  const { currentConversation, cachedMessages, setCachedMessages } =
+    useChatContext();
 
   const addOrUpdateMessage = (newMessage: Message) => {
     if (!currentConversation?._id) return;
 
-    setCachedMessages((prevMessages: MessageCache): MessageCache => {
-      const conversationMessages = prevMessages[currentConversation._id] || [];
-
-      if (newMessage.role === "assistant") {
-        const lastMessage =
-          conversationMessages[conversationMessages.length - 1];
-        if (lastMessage && lastMessage.role === "assistant") {
-          const updatedMessages = [...conversationMessages];
-          updatedMessages[conversationMessages.length - 1] = newMessage;
-          return {
-            ...prevMessages,
-            [currentConversation._id]: updatedMessages,
-          };
+    setLocalMessages((prevMessages) => {
+      // First check if this is a temporary message that needs to be replaced
+      if (newMessage._id.startsWith("temp-assistant-")) {
+        const existingTempIndex = prevMessages.findIndex((msg) =>
+          msg._id.startsWith("temp-assistant-")
+        );
+        if (existingTempIndex !== -1) {
+          return prevMessages.map((msg, index) =>
+            index === existingTempIndex ? newMessage : msg
+          );
         }
       }
 
-      return {
-        ...prevMessages,
-        [currentConversation._id]: [...conversationMessages, newMessage],
-      };
+      // Then check for regular message updates
+      const existingIndex = prevMessages.findIndex(
+        (msg) => msg._id === newMessage._id
+      );
+
+      if (existingIndex !== -1) {
+        return prevMessages.map((msg, index) =>
+          index === existingIndex ? newMessage : msg
+        );
+      }
+
+      return [...prevMessages, newMessage];
     });
   };
 
-  // Reset messages and fetch when conversation changes
+  // Update cache when local messages change, but only for non-temporary messages
   useEffect(() => {
-    const fetchMessages = async () => {
-      const token = localStorage.getItem("token");
-      if (!token || !currentConversation?._id) {
-        return;
+    if (currentConversation?._id && localMessages.length > 0) {
+      // Filter out temporary messages before caching
+      const permanentMessages = localMessages.filter(
+        (msg) => !msg._id.startsWith("temp-")
+      );
+
+      if (permanentMessages.length > 0) {
+        setCachedMessages((prevCache) => ({
+          ...prevCache,
+          [currentConversation._id]: permanentMessages,
+        }));
       }
-
-      // Check if we already have messages in cache
-      if (cachedMessages[currentConversation._id]) {
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const response = await fetch(
-          `/api/chat/messages?conversationId=${currentConversation._id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        const data = await response.json();
-        setCachedMessages(
-          (prev: MessageCache): MessageCache => ({
-            ...prev,
-            [currentConversation._id]: data.messages || [],
-          })
-        );
-      } catch (error) {
-        console.error("Error fetching messages:", error);
-        invalidateMessagesCache(currentConversation._id);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchMessages();
-  }, [currentConversation?._id]);
-
-  // Always scroll to bottom when conversation changes or messages are loaded
-  useEffect(() => {
-    if (!isLoading && currentConversation?._id) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
     }
-  }, [currentConversation?._id, isLoading, cachedMessages]);
+  }, [localMessages, currentConversation?._id, setCachedMessages]);
+
+  // Initialize or update local messages when conversation changes
+  useEffect(() => {
+    if (!currentConversation?._id) {
+      setLocalMessages([]);
+      return;
+    }
+
+    // If we have cached messages for this conversation, use them
+    if (cachedMessages[currentConversation._id]?.length > 0) {
+      // Ensure we're not mixing temporary messages with cached ones
+      const cachedMsgs = cachedMessages[currentConversation._id].filter(
+        (msg) => !msg._id.startsWith("temp-")
+      );
+      setLocalMessages(cachedMsgs);
+      return;
+    }
+
+    // If conversation changed, fetch messages
+    if (currentConversation._id !== previousConversationId.current) {
+      const fetchMessages = async () => {
+        setIsLoading(true);
+        try {
+          const token = localStorage.getItem("token");
+          if (!token) return;
+
+          const response = await fetch(
+            `/api/chat/messages?conversationId=${currentConversation._id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch messages");
+          }
+
+          const data = await response.json();
+          const fetchedMessages = data.messages || [];
+
+          setLocalMessages(fetchedMessages);
+          setCachedMessages((prev) => ({
+            ...prev,
+            [currentConversation._id]: fetchedMessages,
+          }));
+        } catch (error) {
+          console.error("Error fetching messages:", error);
+          // Clear local messages on error to prevent stale state
+          setLocalMessages([]);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchMessages();
+    }
+
+    previousConversationId.current = currentConversation._id;
+  }, [currentConversation?._id, cachedMessages]);
 
   // Handle scrolling
   useEffect(() => {
@@ -117,7 +146,7 @@ export default function ChatMessages() {
     if (autoScroll) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [cachedMessages, autoScroll]);
+  }, [localMessages, autoScroll]);
 
   // Listen for new messages from the Input component
   useEffect(() => {
@@ -125,21 +154,42 @@ export default function ChatMessages() {
       addOrUpdateMessage(e.detail);
     }) as EventListener;
 
+    const handleUpdateMessage = ((e: CustomEvent<Message>) => {
+      addOrUpdateMessage(e.detail);
+    }) as EventListener;
+
+    const handleRemoveMessage = ((
+      e: CustomEvent<{ id: string; userMessageId?: string }>
+    ) => {
+      if (!currentConversation?._id) return;
+
+      setLocalMessages((prevMessages) => {
+        return prevMessages.filter((msg) => {
+          if (e.detail.userMessageId) {
+            return (
+              msg._id !== e.detail.id && msg._id !== e.detail.userMessageId
+            );
+          }
+          return msg._id !== e.detail.id;
+        });
+      });
+    }) as EventListener;
+
     window.addEventListener("newMessage", handleNewMessage);
+    window.addEventListener("updateMessage", handleUpdateMessage);
+    window.addEventListener("removeMessage", handleRemoveMessage);
+
     return () => {
       window.removeEventListener("newMessage", handleNewMessage);
+      window.removeEventListener("updateMessage", handleUpdateMessage);
+      window.removeEventListener("removeMessage", handleRemoveMessage);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConversation?._id]);
-
-  const currentMessages = currentConversation?._id
-    ? cachedMessages[currentConversation._id] || []
-    : [];
 
   return (
     <>
       <motion.div
-        className="flex w-full justify-center items-center h-16 text-2xl font-bold text-gray-500 overflow-hidden mt-14 "
+        className="flex w-full justify-center items-center h-16 text-2xl font-bold text-gray-500 overflow-hidden mt-14"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -147,12 +197,12 @@ export default function ChatMessages() {
         {currentConversation?.title}
       </motion.div>
       <motion.div
-        className="flex-1 w-full pb-40 overflow-hidden "
+        className="flex-1 w-full pb-40 overflow-hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease: "easeInOut" }}
       >
-        {isLoading ? (
+        {isLoading && !localMessages.length ? (
           <motion.div
             className="h-full flex items-center justify-center"
             initial={{ opacity: 0 }}
@@ -178,7 +228,7 @@ export default function ChatMessages() {
             {/* Scrollable content */}
             <div className="h-full overflow-y-auto px-4 py-4 [&::-webkit-scrollbar]:hidden">
               <div className="max-w-3xl mx-auto space-y-4">
-                {currentMessages.map((message) => (
+                {localMessages.map((message) => (
                   <motion.div
                     key={message._id}
                     initial={{ opacity: 0 }}
