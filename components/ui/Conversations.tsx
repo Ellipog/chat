@@ -152,7 +152,7 @@ export default function Conversations() {
 
   return (
     <motion.div
-      className="flex flex-col gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-2xl shadow-md"
+      className="flex flex-col gap-2 px-3 py-3 bg-white dark:bg-gray-800 rounded-2xl shadow-md"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -193,6 +193,7 @@ export default function Conversations() {
                       }
                     }}
                     autoFocus
+                    minimal
                   />
                   <button
                     onClick={handleUpdateTitle}

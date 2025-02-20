@@ -42,7 +42,7 @@ export default function MessageBlock({ message }: { message: Message }) {
         className={`group relative max-w-[80%] rounded-lg px-4 py-2 ${
           message.role === "user"
             ? "bg-blue-500 text-white after:border-blue-500 after:right-[-8px] after:border-t-[8px] after:border-r-[8px] after:border-b-[8px] after:border-l-[8px] after:border-t-transparent after:border-r-transparent after:border-l-transparent"
-            : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 after:border-gray-100 dark:after:border-gray-800 after:left-[-8px] after:border-t-[8px] after:border-r-[8px] after:border-b-[8px] after:border-l-[8px] after:border-t-transparent after:border-l-transparent after:border-b-transparent"
+            : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"
         } after:absolute after:bottom-[8px] after:block after:h-0 after:w-0 after:content-['']`}
       >
         {message.role === "assistant" && (

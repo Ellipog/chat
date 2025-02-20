@@ -229,7 +229,7 @@ export default function ChatInput() {
       <div className="w-full flex justify-center fixed bottom-20">
         <motion.form
           onSubmit={handleSubmit}
-          className="flex items-center gap-2 border-2 border-gray-300 py-2 px-3 rounded-2xl shadow-lg bg-white w-[40rem] max-w-[600px]"
+          className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600 py-2 px-3 rounded-2xl shadow-lg bg-white dark:bg-gray-900 w-[40rem] max-w-[600px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, ease: "easeInOut" }}

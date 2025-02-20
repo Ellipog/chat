@@ -66,14 +66,14 @@ export default function Auth() {
     };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen px-4">
+    <div className="flex flex-col items-center justify-center h-screen px-4 bg-white dark:bg-gray-900">
       <motion.div
         className="w-full max-w-md space-y-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="text-3xl font-bold text-center text-gray-800">
+        <h1 className="text-3xl font-bold text-center text-gray-800 dark:text-gray-100">
           {isRegistering ? "Create Account" : "Welcome Back"}
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -91,6 +91,7 @@ export default function Auth() {
               />
             </motion.div>
           )}
+          <div></div>
           <TextInput
             placeholder="Enter your email"
             value={formData.email}
@@ -106,7 +107,7 @@ export default function Auth() {
           />
           {error && (
             <motion.p
-              className="text-red-500 text-sm text-center"
+              className="text-red-500 dark:text-red-400 text-sm text-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -117,7 +118,7 @@ export default function Auth() {
           <motion.button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2 px-4 h-10 bg-gray-800 text-white rounded-2xl hover:bg-gray-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative"
+            className="w-full py-2 px-4 h-10 bg-gray-800 dark:bg-gray-700 text-white rounded-2xl hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -140,7 +141,7 @@ export default function Auth() {
             type="button"
             onClick={() => setIsRegistering(!isRegistering)}
             disabled={isLoading}
-            className="w-full text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
