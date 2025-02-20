@@ -24,7 +24,7 @@ export default function Navbar() {
         >
           <button
             onClick={() => setShowUserInfo(true)}
-            className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors w-32 overflow-hidden text-ellipsis whitespace-nowrap"
+            className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors w-28 overflow-hidden text-ellipsis whitespace-nowrap"
           >
             {user?.name}
           </button>
