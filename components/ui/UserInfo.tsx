@@ -42,6 +42,8 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
     }
   };
 
+  console.log(user?.userInfo);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -59,8 +61,10 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
             exit={{ scale: 0.9, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold">User Information</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold select-none">
+                User Information
+              </h2>
               <button
                 onClick={onClose}
                 className="text-gray-500 hover:text-gray-700"
@@ -70,27 +74,21 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
             </div>
 
             {user?.userInfo && user.userInfo.length > 0 ? (
-              <div className="space-y-4">
+              <div className="flex flex-row flex-wrap gap-2">
                 {user.userInfo.map((info, index) => (
                   <div
                     key={index}
-                    className="bg-gray-50 p-4 rounded-lg flex justify-between items-start"
+                    onClick={() => handleRemoveInfo(index)}
+                    className="bg-gray-100 hover:bg-gray-200 h-8 transition-all duration-200 w-fit gap-2 p-2 rounded-lg flex justify-between items-center group hover:animate-wiggle"
                   >
                     <div>
-                      <span className="text-sm text-gray-500 block mb-1">
-                        {info.category}
-                      </span>
-                      <p className="text-gray-800">{info.info}</p>
-                      <span className="text-xs text-gray-400 block mt-1">
-                        {new Date(info.createdAt).toLocaleDateString()}
-                      </span>
+                      <p className="text-gray-800 select-none">{info.info}</p>
                     </div>
                     <button
-                      onClick={() => handleRemoveInfo(index)}
                       disabled={loading}
-                      className="text-red-500 hover:text-red-700 disabled:opacity-50"
+                      className="text-red-400 group-hover:text-red-700 disabled:opacity-50 transition-all duration-200"
                     >
-                      <XCircle size={20} />
+                      <XCircle size={18} />
                     </button>
                   </div>
                 ))}

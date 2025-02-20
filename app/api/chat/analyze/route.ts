@@ -49,17 +49,27 @@ export async function POST(req: Request) {
 
     // Analyze the message for new user information
     const analysisResponse = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: process.env.OPEN_AI_MODEL as string,
       messages: [
         {
           role: "system",
-          content: `You are an AI designed to extract personal information from messages. 
-          Look for new, factual information about the user that isn't already in their profile.
-          You must respond with ONLY a JSON array of objects with 'category' and 'info' fields, or an empty array if no new information is found.
-          Example response format: [{"category": "Occupation", "info": "Software Engineer"}] or []
-          Categories should be specific but reusable (e.g., "Occupation", "Location", "Hobby", "Family", "Education", etc.).
-          Only extract factual, concrete information, not opinions or temporary states. Proper capitalization is important.
-          Current user info: ${JSON.stringify(userInfo)}`,
+          content: `You are an AI designed to extract personal information and recurring interests from messages.
+          Look for:
+          1. New, factual information about the user that isn't already in their profile
+          2. Topics, subjects, or themes they consistently discuss or show strong interest in
+          
+          You must respond with ONLY a JSON array of strings containing the new information found, or an empty array if no new information is found.
+          Example response format: 
+          ["Works as a Software Engineer", "Lives in Seattle", "Prefers not to be called 'Bob'", "Shows strong interest in machine learning", "Frequently discusses cryptocurrency trading"] or []
+          
+          Guidelines:
+          - Use proper capitalization and complete sentences
+          - For interests/topics: Only include if they appear to be consistent interests or frequently discussed topics
+          - Include preferences or corrections to previously known information (e.g., preferred names, pronouns, or corrections to stored facts)
+          - For interests, use phrases like "Shows strong interest in...", "Frequently discusses...", or "Regularly talks about..."
+          
+          Previously known information (do not include any of these unless providing a correction/preference):
+          ${userInfo.map((info) => info.info).join("\n")}`,
         },
         {
           role: "user",
@@ -70,12 +80,17 @@ export async function POST(req: Request) {
     });
 
     const analysisContent = analysisResponse.choices[0].message.content;
-    let newInfo: { category: string; info: string }[] = [];
+    let newInfo: { info: string }[] = [];
 
     try {
       if (analysisContent) {
         const parsedContent = JSON.parse(analysisContent.trim());
-        newInfo = Array.isArray(parsedContent) ? parsedContent : [];
+        // Convert string array to required format with auto-categorization
+        newInfo = Array.isArray(parsedContent)
+          ? parsedContent.map((info) => ({
+              info: info,
+            }))
+          : [];
       }
     } catch (error) {
       console.error("Error parsing analysis response:", error);

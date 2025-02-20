@@ -6,20 +6,29 @@ import { ArrowRight } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useChatContext } from "@/context/context";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { Use } from "@/lib/uselessUse";
 
 export default function ChatInput() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { currentConversation, addNewConversation, invalidateMessagesCache } =
-    useChatContext();
+  const {
+    currentConversation,
+    addNewConversation,
+    invalidateMessagesCache,
+    user,
+    updateUser,
+  } = useChatContext();
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
 
   // Cleanup on conversation switch
   useEffect(() => {
+    const abortController = activeRequestRef.current;
+
     return () => {
-      if (activeRequestRef.current) {
-        activeRequestRef.current.abort();
+      if (abortController) {
+        abortController.abort();
+        activeRequestRef.current = null;
         setIsLoading(false);
       }
     };
@@ -41,6 +50,7 @@ export default function ChatInput() {
     activeRequestRef.current = new AbortController();
 
     const tempId = `temp-${Date.now()}`;
+    let conversationId = currentConversation?._id || "";
     // Immediately add user message to UI
     const userMessage = {
       _id: tempId,
@@ -59,31 +69,34 @@ export default function ChatInput() {
     inputRef.current?.focus();
 
     try {
-      await fetch("/api/chat/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: currentMessage,
-          conversationId: currentConversation?._id,
+      const [analyzeResponse, messageResponse] = await Promise.all([
+        fetch("/api/chat/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message: currentMessage,
+            conversationId: currentConversation?._id,
+          }),
+          signal: activeRequestRef.current.signal,
         }),
-        signal: activeRequestRef.current.signal,
-      });
+        fetch("/api/chat/message", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message: currentMessage,
+            conversationId: currentConversation?._id,
+          }),
+          signal: activeRequestRef.current.signal,
+        }),
+      ]);
 
-      const messageResponse = await fetch("/api/chat/message", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: currentMessage,
-          conversationId: currentConversation?._id,
-        }),
-        signal: activeRequestRef.current.signal,
-      });
+      Use(analyzeResponse);
 
       if (!messageResponse.ok) {
         const error = await messageResponse.json();
@@ -91,22 +104,18 @@ export default function ChatInput() {
       }
 
       // Handle new conversation creation
-      let conversationId = currentConversation?._id;
-      if (!conversationId) {
-        const responseData = await messageResponse.json();
-        if (responseData.newConversation) {
-          addNewConversation(responseData.newConversation);
-          conversationId = responseData.newConversation._id;
-        }
+      const newConversationData = messageResponse.headers.get(
+        "X-Conversation-Data"
+      );
+      if (newConversationData) {
+        const newConversation = JSON.parse(newConversationData);
+        addNewConversation(newConversation);
+        conversationId = newConversation._id;
       }
 
-      // Handle streaming for all conversations
-      if (!messageResponse.body) {
-        throw new Error("No response body received");
-      }
-
+      // Handle streaming
       await handleStreamingResponse(
-        messageResponse.body,
+        messageResponse.body!,
         conversationId || "",
         tempId
       );
@@ -114,6 +123,17 @@ export default function ChatInput() {
       // Invalidate the messages cache for this conversation after streaming is complete
       if (conversationId) {
         invalidateMessagesCache(conversationId);
+      }
+
+      if (analyzeResponse.ok) {
+        const analyzeData = await analyzeResponse.json();
+        if (analyzeData.newInfo && analyzeData.newInfo.length > 0 && user) {
+          const updatedUser = {
+            ...user,
+            userInfo: [...(user.userInfo || []), ...analyzeData.newInfo],
+          };
+          updateUser(updatedUser);
+        }
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -141,9 +161,14 @@ export default function ChatInput() {
     const decoder = new TextDecoder();
     let buffer = "";
 
+    // Create a unique ID for this AI response
+    const tempAssistantId = `temp-assistant-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
     // Create a temporary message for streaming
     const tempAssistantMessage = {
-      _id: `temp-assistant-${Date.now()}`,
+      _id: tempAssistantId,
       content: "",
       role: "assistant" as const,
       createdAt: new Date().toISOString(),

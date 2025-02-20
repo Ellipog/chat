@@ -22,10 +22,10 @@ export default function ChatMessages() {
     if (!currentConversation?._id) return;
 
     setLocalMessages((prevMessages) => {
-      // First check if this is a temporary message that needs to be replaced
+      // For temporary AI messages, only update the specific message with matching ID
       if (newMessage._id.startsWith("temp-assistant-")) {
-        const existingTempIndex = prevMessages.findIndex((msg) =>
-          msg._id.startsWith("temp-assistant-")
+        const existingTempIndex = prevMessages.findIndex(
+          (msg) => msg._id === newMessage._id
         );
         if (existingTempIndex !== -1) {
           return prevMessages.map((msg, index) =>
@@ -34,7 +34,7 @@ export default function ChatMessages() {
         }
       }
 
-      // Then check for regular message updates
+      // For regular message updates
       const existingIndex = prevMessages.findIndex(
         (msg) => msg._id === newMessage._id
       );
@@ -125,7 +125,7 @@ export default function ChatMessages() {
     }
 
     previousConversationId.current = currentConversation._id;
-  }, [currentConversation?._id, cachedMessages]);
+  }, [currentConversation?._id]);
 
   // Handle scrolling
   useEffect(() => {

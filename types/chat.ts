@@ -16,12 +16,3 @@ export interface Conversation {
 export interface MessageCache {
   [conversationId: string]: Message[];
 }
-
-export interface AIResponse {
-  message: string;
-  userInfo?: {
-    info: string;
-    category: string;
-  };
-  newConversation?: Conversation;
-}

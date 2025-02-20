@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     if (!currentConversationId) {
       // Generate conversation topic using a more focused prompt
       const topicResponse = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: process.env.OPEN_AI_MODEL as string,
         messages: [
           {
             role: "system",
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
 
     // Create streaming response
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: process.env.OPEN_AI_MODEL as string,
       messages,
       stream: true,
       temperature: 0.7,
@@ -142,7 +142,6 @@ export async function POST(req: Request) {
       user.userInfo || [],
       async (fullContent: string) => {
         try {
-          // Save assistant's message after completion
           await Message.create({
             user: decoded.id,
             conversationId: currentConversationId,
@@ -151,7 +150,6 @@ export async function POST(req: Request) {
             createdAt: new Date(),
           });
 
-          // Update conversation's lastMessageAt
           await Conversation.findByIdAndUpdate(currentConversationId, {
             lastMessageAt: new Date(),
           });
@@ -161,7 +159,32 @@ export async function POST(req: Request) {
       }
     );
 
-    return new Response(stream);
+    // Return both the new conversation and the stream
+    const readable = new ReadableStream({
+      start(controller) {
+        const reader = stream.getReader();
+        return pump();
+        function pump(): Promise<void> {
+          return reader.read().then(({ done, value }) => {
+            if (done) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(value);
+            return pump();
+          });
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        ...(newConversation && {
+          "X-Conversation-Data": JSON.stringify(newConversation),
+        }),
+      },
+    });
   } catch (error) {
     console.error("Error in message route:", error);
     const err = error as Error;
