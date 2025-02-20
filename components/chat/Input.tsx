@@ -2,15 +2,34 @@
 
 import { motion } from "framer-motion";
 import TextInput from "@/components/ui/TextInput";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Paperclip, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useChatContext } from "@/context/context";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { Use } from "@/lib/uselessUse";
+import { FileAttachment } from "@/types/chat";
+
+// Allowed file types that OpenAI can process
+const ALLOWED_FILE_TYPES = {
+  // Images
+  "image/jpeg": true,
+  "image/png": true,
+  "image/gif": true,
+  "image/webp": true,
+  // Documents
+  "application/pdf": true,
+  "text/plain": true,
+  "text/csv": true,
+  "text/markdown": true,
+};
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB limit
 
 export default function ChatInput() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string>("");
   const {
     currentConversation,
     addNewConversation,
@@ -19,6 +38,7 @@ export default function ChatInput() {
     updateUser,
   } = useChatContext();
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
 
   // Cleanup on conversation switch
@@ -34,10 +54,75 @@ export default function ChatInput() {
     };
   }, [currentConversation?._id]);
 
+  const validateFile = (file: File): string | null => {
+    if (!ALLOWED_FILE_TYPES[file.type as keyof typeof ALLOWED_FILE_TYPES]) {
+      return `File type ${file.type} is not supported. Allowed types: images (JPEG, PNG, GIF, WebP), PDF, text files, CSV, and Markdown.`;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return `File ${file.name} is too large. Maximum size is 20MB.`;
+    }
+    return null;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setFileError("");
+
+    // Validate each file
+    const validFiles: File[] = [];
+    for (const file of files) {
+      const error = validateFile(file);
+      if (error) {
+        setFileError(error);
+        return;
+      }
+      validFiles.push(file);
+    }
+
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadFiles = async (): Promise<FileAttachment[]> => {
+    if (!selectedFiles.length) return [];
+
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    const token = localStorage.getItem("token");
+    if (!token) return [];
+
+    try {
+      const response = await fetch("/api/chat/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload files");
+      }
+
+      const data = await response.json();
+      setSelectedFiles([]);
+      return data.attachments;
+    } catch (error) {
+      console.error("Error uploading files:", error);
+      return [];
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     if (isLoading) return;
     e.preventDefault();
-    if (!message.trim() || isLoading) return;
+    if ((!message.trim() && !selectedFiles.length) || isLoading) return;
 
     setIsLoading(true);
     const token = localStorage.getItem("token");
@@ -45,6 +130,9 @@ export default function ChatInput() {
       setIsLoading(false);
       return;
     }
+
+    // Upload files first if any
+    const attachments = await uploadFiles();
 
     // Create new abort controller for this request
     activeRequestRef.current = new AbortController();
@@ -58,14 +146,16 @@ export default function ChatInput() {
       role: "user" as const,
       createdAt: new Date().toISOString(),
       conversationId: currentConversation?._id || "",
+      attachments,
     };
     window.dispatchEvent(
       new CustomEvent("newMessage", { detail: userMessage })
     );
 
-    // Clear the message input early to improve UX
+    // Clear the message input and files early to improve UX
     const currentMessage = message;
     setMessage("");
+    setSelectedFiles([]);
     inputRef.current?.focus();
 
     try {
@@ -91,6 +181,7 @@ export default function ChatInput() {
           body: JSON.stringify({
             message: currentMessage,
             conversationId: currentConversation?._id,
+            attachments,
           }),
           signal: activeRequestRef.current.signal,
         }),
@@ -226,33 +317,85 @@ export default function ChatInput() {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full flex justify-center fixed bottom-20">
+      <div className="w-full flex justify-center fixed bottom-24">
         <motion.form
           onSubmit={handleSubmit}
-          className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600 py-2 px-3 rounded-2xl shadow-lg bg-white dark:bg-gray-900 w-[40rem] max-w-[600px]"
+          className="flex flex-col items-center gap-2 w-[40rem] max-w-[600px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, ease: "easeInOut" }}
         >
-          <TextInput
-            ref={inputRef}
-            value={message}
-            onChange={setMessage}
-            placeholder="Hi"
-            minimal
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !message.trim()}
-            className="hover:bg-gray-100 disabled:opacity-50 transition-all duration-300 relative"
-          >
-            {isLoading ? (
-              <LoadingScreen size="small" />
-            ) : (
-              <ArrowRight className="w-5 h-5 text-gray-500" />
-            )}
-          </button>
+          <div className="w-full flex items-center gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              className="hidden"
+              accept={Object.keys(ALLOWED_FILE_TYPES).join(",")}
+              multiple
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-gray-300 dark:border-gray-600 py-2.5 px-3 rounded-2xl shadow-lg bg-white dark:bg-gray-900 transition-all duration-300"
+              disabled={isLoading}
+            >
+              <Paperclip className="w-5 h-5 text-gray-500" />
+            </button>
+            <div className="flex flex-row w-full border-2 border-gray-300 dark:border-gray-600 py-2 px-3 rounded-2xl shadow-lg bg-white dark:bg-gray-900">
+              <TextInput
+                ref={inputRef}
+                value={message}
+                onChange={setMessage}
+                placeholder="Hi"
+                minimal
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={
+                  isLoading || (!message.trim() && !selectedFiles.length)
+                }
+                className="hover:bg-gray-100 disabled:opacity-50 transition-all duration-300 relative"
+              >
+                {isLoading ? (
+                  <LoadingScreen size="small" />
+                ) : (
+                  <ArrowRight className="w-5 h-5 text-gray-500" />
+                )}
+              </button>
+            </div>
+          </div>
+          {fileError && (
+            <div className="absolute top-14 w-full text-center text-red-500 text-sm">
+              {fileError}
+            </div>
+          )}
+          {selectedFiles.length > 0 && (
+            <div className="absolute top-14 w-full flex justify-center">
+              <div className="w-[40rem] max-w-[600px] overflow-x-auto pb-2">
+                <div className="flex flex-nowrap gap-2 min-w-min">
+                  {selectedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex-shrink-0 border-2 border-gray-300 dark:border-gray-600 py-2.5 px-3 rounded-2xl bg-white dark:bg-gray-900 flex flex-row items-center gap-2"
+                    >
+                      <span className="text-sm truncate max-w-[150px]">
+                        {file.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </motion.form>
       </div>
     </div>

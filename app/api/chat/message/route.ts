@@ -7,12 +7,135 @@ import Conversation from "@/models/Conversation";
 import User from "@/models/User";
 import { z } from "zod";
 import { OpenAIStream } from "@/lib/openAIStream";
+import { FileAttachment, MessageWithAttachments } from "@/types/chat";
+import {
+  ChatCompletionContentPart,
+  ChatCompletionMessageParam,
+  ChatCompletionSystemMessageParam,
+} from "openai/resources/chat/completions";
 
 // Request validation schema
 const messageSchema = z.object({
   message: z.string().min(1, "Message is required"),
   conversationId: z.string().optional(),
+  attachments: z
+    .array(
+      z.object({
+        _id: z.string(),
+        filename: z.string(),
+        contentType: z.string(),
+        url: z.string(),
+        size: z.number(),
+      })
+    )
+    .optional(),
 });
+
+interface UserInfo {
+  info: string;
+  createdAt?: Date;
+}
+
+function createSystemMessage(
+  userInfo: UserInfo[] | null
+): ChatCompletionSystemMessageParam {
+  return {
+    role: "system",
+    content: `You are a helpful AI assistant with the ability to perceive and understand shared files.
+
+File Handling Capabilities:
+1. For Images:
+   - You can see and analyze the content of images
+   - Reference specific details from images in your responses
+   - Describe what you observe in the images when relevant
+
+2. For Other Files:
+   - You can see file names, types, and sizes
+   - Acknowledge and reference files appropriately
+   - Provide relevant suggestions based on file types
+
+When responding:
+- If an image is shared, describe what you see in it
+- Reference files by name when discussing them
+- Consider file context in your responses
+- Be specific about which file you're referring to if multiple are shared
+
+User Information:
+${
+  userInfo
+    ? JSON.stringify(
+        userInfo.map((info) => info.info),
+        null,
+        2
+      )
+    : "No additional info provided"
+}`,
+  };
+}
+
+function createMessageContent(
+  text: string,
+  files?: FileAttachment[]
+): ChatCompletionContentPart[] {
+  const content: ChatCompletionContentPart[] = [];
+
+  // Add text content first if it exists
+  if (text.trim()) {
+    content.push({ type: "text", text });
+  }
+
+  // Add files
+  if (files?.length) {
+    files.forEach((file) => {
+      if (file.contentType.startsWith("image/")) {
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: file.url,
+            detail: "high",
+          },
+        });
+      } else {
+        // For non-image files, add a descriptive text
+        content.push({
+          type: "text",
+          text: `\n[File: ${file.filename} (${file.contentType}, ${(
+            file.size /
+            (1024 * 1024)
+          ).toFixed(2)}MB)]\n`,
+        });
+      }
+    });
+  }
+
+  return content;
+}
+
+function formatMessageForHistory(
+  msg: MessageWithAttachments
+): ChatCompletionMessageParam {
+  const hasImages = msg.attachments?.some((attachment: FileAttachment) =>
+    attachment.contentType.startsWith("image/")
+  );
+
+  const baseMessage = {
+    role: msg.role,
+    ...(msg.name && { name: msg.name }),
+  };
+
+  if (hasImages || msg.attachments?.length) {
+    return {
+      ...baseMessage,
+      content: createMessageContent(msg.content, msg.attachments),
+    } as ChatCompletionMessageParam;
+  }
+
+  // For messages without attachments, use simple text format
+  return {
+    ...baseMessage,
+    content: msg.content,
+  } as ChatCompletionMessageParam;
+}
 
 export async function POST(req: Request) {
   try {
@@ -35,7 +158,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { message, conversationId } = validationResult.data;
+    const { message, conversationId, attachments } = validationResult.data;
 
     // Verify token and get user ID
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
@@ -64,11 +187,11 @@ export async function POST(req: Request) {
           {
             role: "system",
             content:
-              "Extract a topic from the user's message that captures the main subject. Return only the topic, no additional text or punctuation. Proper capitalization is important.",
+              "Extract a concise topic from the message. Consider both text and any attached files. Return only the topic with proper capitalization, no additional text or punctuation.",
           },
           {
             role: "user",
-            content: message,
+            content: createMessageContent(message, attachments),
           },
         ],
         temperature: 0.7,
@@ -92,6 +215,7 @@ export async function POST(req: Request) {
         content: message,
         role: "user",
         createdAt: new Date(),
+        attachments,
       });
     }
 
@@ -104,6 +228,7 @@ export async function POST(req: Request) {
         content: message,
         role: "user",
         createdAt: new Date(),
+        attachments,
       });
     }
 
@@ -113,20 +238,17 @@ export async function POST(req: Request) {
     }).sort({ createdAt: 1 });
 
     // Format messages for OpenAI
-    const messages = [
-      {
-        role: "system",
-        content: `You are a helpful AI assistant. The user has provided the following information about themselves: ${
-          user.userInfo
-            ? JSON.stringify(user.userInfo)
-            : "No additional info provided"
-        }`,
-      },
-      ...messageHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+    const messages: ChatCompletionMessageParam[] = [
+      createSystemMessage(user.userInfo),
+      ...messageHistory.map(formatMessageForHistory),
     ];
+
+    // Check if any message contains images
+    const hasImages = messageHistory.some((msg) =>
+      msg.attachments?.some((attachment: FileAttachment) =>
+        attachment.contentType.startsWith("image/")
+      )
+    );
 
     // Create streaming response
     const response = await openai.chat.completions.create({
@@ -134,6 +256,7 @@ export async function POST(req: Request) {
       messages,
       stream: true,
       temperature: 0.7,
+      max_tokens: hasImages ? 4096 : undefined,
     });
 
     // Stream the response

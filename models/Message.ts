@@ -1,5 +1,31 @@
 import mongoose from "mongoose";
 
+const fileAttachmentSchema = new mongoose.Schema(
+  {
+    _id: {
+      type: String,
+      required: true,
+    },
+    filename: {
+      type: String,
+      required: true,
+    },
+    contentType: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+    size: {
+      type: Number,
+      required: true,
+    },
+  },
+  { _id: false }
+); // Disable automatic _id generation
+
 const messageSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -23,6 +49,7 @@ const messageSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  attachments: [fileAttachmentSchema],
 });
 
 const Message =
