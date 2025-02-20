@@ -4,17 +4,19 @@ import Conversation from "@/models/Conversation";
 import jwt from "jsonwebtoken";
 import Message from "@/models/Message";
 
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
+export async function PUT(request: Request, { params }: RouteParams) {
   try {
-    const token = req.headers.get("authorization")?.split(" ")[1];
+    const { id } = await params;
+    const token = request.headers.get("authorization")?.split(" ")[1];
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title } = await req.json();
+    const { title } = await request.json();
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -25,7 +27,7 @@ export async function PUT(
     await connectToDatabase();
 
     const conversation = await Conversation.findOne({
-      _id: params.id,
+      _id: id,
       user: decoded.id,
     });
 
@@ -46,12 +48,10 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: Request, { params }: RouteParams) {
   try {
-    const token = req.headers.get("authorization")?.split(" ")[1];
+    const { id } = await params;
+    const token = request.headers.get("authorization")?.split(" ")[1];
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -62,7 +62,7 @@ export async function DELETE(
     await connectToDatabase();
 
     const conversation = await Conversation.findOne({
-      _id: params.id,
+      _id: id,
       user: decoded.id,
     });
 
@@ -73,8 +73,8 @@ export async function DELETE(
       );
     }
 
-    await Message.deleteMany({ conversationId: params.id });
-    await Conversation.deleteOne({ _id: params.id });
+    await Message.deleteMany({ conversationId: id });
+    await Conversation.deleteOne({ _id: id });
 
     return NextResponse.json({ success: true });
   } catch (error) {
