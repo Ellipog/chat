@@ -55,34 +55,8 @@ export default function Conversations() {
     }
   }, [cachedConversations.length]);
 
-  const handleCreateConversation = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const response = await fetch("/api/chat/conversations", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: "New Conversation",
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to create conversation");
-
-      const data = await response.json();
-      invalidateConversationsCache();
-      setCurrentConversation(data.conversation);
-      setCachedMessages((prev) => ({
-        ...prev,
-        [data.conversation._id]: [],
-      }));
-    } catch (error) {
-      console.error("Error creating conversation:", error);
-    }
+  const createNewConversation = () => {
+    setCurrentConversation(null);
   };
 
   const handleUpdateTitle = async () => {
@@ -158,7 +132,7 @@ export default function Conversations() {
       transition={{ duration: 0.5, ease: "easeInOut" }}
     >
       <button
-        onClick={handleCreateConversation}
+        onClick={createNewConversation}
         className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
       >
         <Plus size={18} />

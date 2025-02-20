@@ -49,20 +49,14 @@ export default function ChatMessages() {
     });
   };
 
-  // Update cache when local messages change, but only for non-temporary messages
+  // Update cache when local messages change
   useEffect(() => {
     if (currentConversation?._id && localMessages.length > 0) {
-      // Filter out temporary messages before caching
-      const permanentMessages = localMessages.filter(
-        (msg) => !msg._id.startsWith("temp-")
-      );
-
-      if (permanentMessages.length > 0) {
-        setCachedMessages((prevCache) => ({
-          ...prevCache,
-          [currentConversation._id]: permanentMessages,
-        }));
-      }
+      // Include all messages in cache, including temporary ones
+      setCachedMessages((prevCache) => ({
+        ...prevCache,
+        [currentConversation._id]: localMessages,
+      }));
     }
   }, [localMessages, currentConversation?._id, setCachedMessages]);
 
@@ -78,11 +72,7 @@ export default function ChatMessages() {
 
     // If we have cached messages for this conversation, use them
     if (cachedMessages[currentConversation._id]?.length > 0) {
-      // Ensure we're not mixing temporary messages with cached ones
-      const cachedMsgs = cachedMessages[currentConversation._id].filter(
-        (msg) => !msg._id.startsWith("temp-")
-      );
-      setLocalMessages(cachedMsgs);
+      setLocalMessages(cachedMessages[currentConversation._id]);
       return;
     }
 
@@ -113,7 +103,9 @@ export default function ChatMessages() {
           setLocalMessages(fetchedMessages);
           setCachedMessages((prev) => ({
             ...prev,
-            [currentConversation._id]: fetchedMessages,
+            [currentConversation._id]: fetchedMessages.filter(
+              (msg: Message) => !msg._id.startsWith("temp-")
+            ),
           }));
         } catch (error) {
           console.error("Error fetching messages:", error);
