@@ -1,14 +1,15 @@
-import { ChangeEvent, forwardRef } from "react";
+import { ChangeEvent, forwardRef, KeyboardEvent } from "react";
 
 interface TextInputProps {
   value: string;
   onChange: (value: string) => void;
-  placeholder: string;
+  placeholder?: string;
   type?: string;
   disabled?: boolean;
   minimal?: boolean;
   onBlur?: () => void;
   autoFocus?: boolean;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
 }
 
 const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
@@ -16,12 +17,13 @@ const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
     {
       value,
       onChange,
-      placeholder,
+      placeholder = "",
       type = "text",
       disabled = false,
       minimal = false,
       onBlur,
       autoFocus,
+      onKeyDown,
     },
     ref
   ) => {
@@ -45,6 +47,7 @@ const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
         disabled={disabled}
         onBlur={onBlur}
         autoFocus={autoFocus}
+        onKeyDown={onKeyDown}
         className={`${baseStyles} ${!minimal ? decorativeStyles : ""}`}
       />
     );

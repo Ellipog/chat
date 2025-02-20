@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { useChatContext } from "@/context/context";
 import LoadingScreen from "@/components/ui/LoadingScreen";
@@ -51,25 +53,40 @@ export default function Conversations() {
     if (cachedConversations.length === 0) {
       fetchConversations();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cachedConversations.length]);
 
-  const selectConversation = (conversation: Conversation) => {
-    setCurrentConversation(conversation);
+  const handleCreateConversation = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/chat/conversations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "New Conversation",
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to create conversation");
+
+      const data = await response.json();
+      invalidateConversationsCache();
+      setCurrentConversation(data.conversation);
+      setCachedMessages((prev) => ({
+        ...prev,
+        [data.conversation._id]: [],
+      }));
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+    }
   };
 
-  const startEditing = (conversation: Conversation) => {
-    setEditingId(conversation._id);
-    setEditTitle(conversation.title);
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditTitle("");
-  };
-
-  const saveEdit = async () => {
-    if (!editingId || !editTitle.trim()) return;
+  const handleUpdateTitle = async () => {
+    if (!editingId) return;
 
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -78,24 +95,32 @@ export default function Conversations() {
       const response = await fetch(`/api/chat/conversations/${editingId}`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ title: editTitle }),
+        body: JSON.stringify({
+          title: editTitle,
+        }),
       });
 
-      if (response.ok) {
-        invalidateConversationsCache();
-        await fetchConversations();
+      if (!response.ok) throw new Error("Failed to update conversation");
+
+      invalidateConversationsCache();
+      if (currentConversation?._id === editingId) {
+        setCurrentConversation({
+          ...currentConversation,
+          title: editTitle,
+        });
       }
     } catch (error) {
       console.error("Error updating conversation:", error);
+    } finally {
+      setEditingId(null);
+      setEditTitle("");
     }
-
-    cancelEditing();
   };
 
-  const deleteConversation = async (id: string) => {
+  const handleDeleteConversation = async (id: string) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
@@ -107,163 +132,121 @@ export default function Conversations() {
         },
       });
 
-      if (response.ok) {
-        // Update UI after successful deletion
-        if (currentConversation?._id === id) {
-          setCurrentConversation(null);
-        }
-        setCachedConversations(
-          cachedConversations.filter((conv) => conv._id !== id)
-        );
-        // Clear messages cache for the deleted conversation
-        setCachedMessages((prev) => {
-          const newCache = { ...prev };
-          delete newCache[id];
-          return newCache;
-        });
-      } else {
-        console.error("Failed to delete conversation");
+      if (!response.ok) throw new Error("Failed to delete conversation");
+
+      invalidateConversationsCache();
+      if (currentConversation?._id === id) {
+        setCurrentConversation(null);
       }
+      setCachedMessages((prev) => {
+        const newCache = { ...prev };
+        delete newCache[id];
+        return newCache;
+      });
     } catch (error) {
       console.error("Error deleting conversation:", error);
+    } finally {
+      setDeleteConfirmation(null);
     }
   };
 
-  const createNewConversation = () => {
-    setCurrentConversation(null);
-  };
-
-  if (isLoading) {
-    return (
-      <motion.div
-        className="fixed top-4 left-4 w-64 bg-white rounded-2xl shadow-lg p-4 flex items-center justify-center"
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5, ease: "easeInOut" }}
-      >
-        <LoadingScreen />
-      </motion.div>
-    );
-  }
-
   return (
     <motion.div
-      className="w-64 bg-white rounded-2xl shadow-lg max-h-[24rem] overflow-y-auto flex flex-col gap-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300"
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
+      className="flex flex-col gap-2 px-6 py-3 bg-white dark:bg-gray-800 rounded-2xl shadow-md"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeInOut" }}
     >
-      <div className="p-4 border-b border-gray-100">
-        <motion.button
-          className="w-full py-2 px-4 bg-gray-800 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-gray-700 transition-colors"
-          onClick={createNewConversation}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </motion.button>
-      </div>
-      <div className="p-2 max-h-[calc(100vh-8rem)] overflow-y-auto flex flex-col gap-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300">
-        {cachedConversations.map((conversation) => (
-          <motion.div
-            key={conversation._id}
-            onClick={(e) => {
-              e.preventDefault();
-              if (editingId === conversation._id) return;
-              selectConversation(conversation);
-            }}
-            className={`p-3 rounded-xl text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors relative group ${
-              currentConversation?._id === conversation._id
-                ? "bg-gray-200/70"
-                : ""
-            }`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-          >
-            {editingId === conversation._id ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  saveEdit();
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-2"
-              >
-                <TextInput
-                  value={editTitle}
-                  onChange={setEditTitle}
-                  placeholder="Conversation name"
-                  minimal
-                  // @ts-expect-error dumb typescript
-                  onBlur={(e) => {
-                    e.stopPropagation();
-                    cancelEditing();
-                  }}
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className="p-1 hover:bg-gray-100 rounded"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Check className="w-4 h-4 text-green-500" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cancelEditing();
-                  }}
-                  className="p-1 hover:bg-gray-100 rounded"
-                >
-                  <X className="w-4 h-4 text-red-500" />
-                </button>
-              </form>
-            ) : (
-              <>
-                <div className="pr-16 truncate select-none">
-                  {conversation.title}
-                </div>
-                <div
-                  className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditing(conversation);
+      <button
+        onClick={handleCreateConversation}
+        className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
+      >
+        <Plus size={18} />
+        <span>New Chat</span>
+      </button>
+      {isLoading ? (
+        <div className="flex justify-center py-4">
+          <LoadingScreen size="small" />
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+          {cachedConversations.map((conversation) => (
+            <div
+              key={conversation._id}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 group ${
+                currentConversation?._id === conversation._id
+                  ? "bg-gray-100 dark:bg-gray-700"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+            >
+              {editingId === conversation._id ? (
+                <div className="flex-1 flex items-center gap-2">
+                  <TextInput
+                    value={editTitle}
+                    onChange={(value) => setEditTitle(value)}
+                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                      if (e.key === "Enter") {
+                        handleUpdateTitle();
+                      } else if (e.key === "Escape") {
+                        setEditingId(null);
+                        setEditTitle("");
+                      }
                     }}
-                    className="p-1 hover:bg-gray-100 rounded"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleUpdateTitle}
+                    className="text-green-500 hover:text-green-600 dark:text-green-400 dark:hover:text-green-300"
                   >
-                    <Edit2 className="w-4 h-4 text-gray-500" />
+                    <Check size={18} />
                   </button>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteConfirmation(conversation._id);
+                    onClick={() => {
+                      setEditingId(null);
+                      setEditTitle("");
                     }}
-                    className="p-1 hover:bg-gray-100 rounded"
+                    className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
                   >
-                    <Trash2 className="w-4 h-4 text-gray-500" />
+                    <X size={18} />
                   </button>
                 </div>
-              </>
-            )}
-          </motion.div>
-        ))}
-      </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setCurrentConversation(conversation)}
+                    className="flex-1 text-left text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors duration-200 truncate"
+                  >
+                    {conversation.title}
+                  </button>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingId(conversation._id);
+                        setEditTitle(conversation.title);
+                      }}
+                      className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmation(conversation._id)}
+                      className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <ConfirmationModal
-        isOpen={deleteConfirmation !== null}
+        isOpen={!!deleteConfirmation}
         onClose={() => setDeleteConfirmation(null)}
-        onConfirm={() => {
-          if (deleteConfirmation) {
-            deleteConversation(deleteConfirmation);
-            setDeleteConfirmation(null);
-          }
-        }}
+        onConfirm={() =>
+          deleteConfirmation && handleDeleteConversation(deleteConfirmation)
+        }
         title="Delete Conversation"
         message="Are you sure you want to delete this conversation? This action cannot be undone."
       />

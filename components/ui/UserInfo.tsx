@@ -55,19 +55,19 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
           onClick={onClose}
         >
           <motion.div
-            className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto"
+            className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold select-none">
+              <h2 className="text-2xl font-semibold select-none text-gray-800 dark:text-white">
                 User Information
               </h2>
               <button
                 onClick={onClose}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 <XCircle size={24} />
               </button>
@@ -79,14 +79,16 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
                   <div
                     key={index}
                     onClick={() => handleRemoveInfo(index)}
-                    className="bg-gray-100 hover:bg-gray-200 h-8 transition-all duration-200 w-fit gap-2 p-2 rounded-lg flex justify-between items-center group hover:animate-wiggle"
+                    className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 h-8 transition-all duration-200 w-fit gap-2 p-2 rounded-lg flex justify-between items-center group hover:animate-wiggle"
                   >
                     <div>
-                      <p className="text-gray-800 select-none">{info.info}</p>
+                      <p className="text-gray-800 dark:text-gray-200 select-none">
+                        {info.info}
+                      </p>
                     </div>
                     <button
                       disabled={loading}
-                      className="text-red-400 group-hover:text-red-700 disabled:opacity-50 transition-all duration-200"
+                      className="text-red-400 group-hover:text-red-700 dark:text-red-400 dark:group-hover:text-red-300 disabled:opacity-50 transition-all duration-200"
                     >
                       <XCircle size={18} />
                     </button>
@@ -94,7 +96,7 @@ export default function UserInfo({ isOpen, onClose }: UserInfoProps) {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
                 No information gathered yet
               </p>
             )}

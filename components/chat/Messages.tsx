@@ -192,7 +192,7 @@ export default function ChatMessages() {
   return (
     <>
       <motion.div
-        className="flex w-full justify-center items-center h-16 text-2xl font-bold text-gray-500 overflow-hidden mt-14"
+        className="flex w-full justify-center items-center h-16 text-2xl font-bold text-gray-500 dark:text-gray-400 overflow-hidden mt-14"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease: "easeInOut" }}
@@ -223,10 +223,10 @@ export default function ChatMessages() {
             transition={{ duration: 0.5, ease: "easeInOut" }}
           >
             {/* Top fade gradient */}
-            <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-white to-transparent z-10 pointer-events-none" />
+            <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-white dark:from-gray-900 to-transparent z-10 pointer-events-none" />
 
             {/* Bottom fade gradient */}
-            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent z-10 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white dark:from-gray-900 to-transparent z-10 pointer-events-none" />
 
             {/* Scrollable content */}
             <div className="h-full overflow-y-auto px-4 py-4 [&::-webkit-scrollbar]:hidden">
