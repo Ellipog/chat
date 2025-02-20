@@ -4,7 +4,10 @@ import Conversation from "@/models/Conversation";
 import jwt from "jsonwebtoken";
 import Message from "@/models/Message";
 
-export async function PUT(req: Request, context: { params: { id: string } }) {
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     if (!token) {
@@ -21,10 +24,8 @@ export async function PUT(req: Request, context: { params: { id: string } }) {
     };
     await connectToDatabase();
 
-    const { id } = await context.params;
-
     const conversation = await Conversation.findOne({
-      _id: id,
+      _id: params.id,
       user: decoded.id,
     });
 
@@ -47,7 +48,7 @@ export async function PUT(req: Request, context: { params: { id: string } }) {
 
 export async function DELETE(
   req: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
@@ -60,10 +61,8 @@ export async function DELETE(
     };
     await connectToDatabase();
 
-    const { id } = await context.params;
-
     const conversation = await Conversation.findOne({
-      _id: id,
+      _id: params.id,
       user: decoded.id,
     });
 
@@ -74,8 +73,8 @@ export async function DELETE(
       );
     }
 
-    await Message.deleteMany({ conversationId: id });
-    await Conversation.deleteOne({ _id: id });
+    await Message.deleteMany({ conversationId: params.id });
+    await Conversation.deleteOne({ _id: params.id });
 
     return NextResponse.json({ success: true });
   } catch (error) {
