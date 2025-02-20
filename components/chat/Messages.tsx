@@ -7,8 +7,34 @@ import { Message } from "@/types/chat";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { motion } from "framer-motion";
 
+const LoadingDots = () => (
+  <motion.div
+    className="flex gap-1 items-center px-4 py-2 h-10 bg-gray-100 dark:bg-gray-800 rounded-lg w-16"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.3 }}
+  >
+    {[0, 1, 2].map((i) => (
+      <motion.div
+        key={i}
+        className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"
+        animate={{
+          scale: [1, 1.2, 1],
+          opacity: [0.4, 1, 0.4],
+        }}
+        transition={{
+          duration: 1,
+          repeat: Infinity,
+          delay: i * 0.2,
+        }}
+      />
+    ))}
+  </motion.div>
+);
+
 export default function ChatMessages() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isWaitingForAI, setIsWaitingForAI] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -147,16 +173,25 @@ export default function ChatMessages() {
   useEffect(() => {
     const handleNewMessage = ((e: CustomEvent<Message>) => {
       addOrUpdateMessage(e.detail);
+      if (e.detail.role === "user") {
+        setIsWaitingForAI(true);
+      } else if (e.detail.role === "assistant") {
+        setIsWaitingForAI(false);
+      }
     }) as EventListener;
 
     const handleUpdateMessage = ((e: CustomEvent<Message>) => {
       addOrUpdateMessage(e.detail);
+      if (e.detail.role === "assistant") {
+        setIsWaitingForAI(false);
+      }
     }) as EventListener;
 
     const handleRemoveMessage = ((
       e: CustomEvent<{ id: string; userMessageId?: string }>
     ) => {
       if (!currentConversation?._id) return;
+      setIsWaitingForAI(false);
 
       setLocalMessages((prevMessages) => {
         return prevMessages.filter((msg) => {
@@ -234,6 +269,16 @@ export default function ChatMessages() {
                     <MessageBlock message={message} />
                   </motion.div>
                 ))}
+                {isWaitingForAI && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="mt-2"
+                  >
+                    <LoadingDots />
+                  </motion.div>
+                )}
                 <div ref={messagesEndRef} />
               </div>
             </div>
