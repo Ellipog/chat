@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useChatContext } from "@/context/context";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { motion } from "framer-motion";
-import { Edit2, Trash2, Plus, Check, X } from "lucide-react";
+import { Edit2, Trash2, Plus, Check, X, ArrowDown } from "lucide-react";
 import TextInput from "@/components/ui/TextInput";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 
@@ -28,6 +28,8 @@ export default function Conversations() {
     invalidateConversationsCache,
     setCachedMessages,
   } = useChatContext();
+  const [showArrow, setShowArrow] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const fetchConversations = async () => {
     const token = localStorage.getItem("token");
@@ -54,6 +56,23 @@ export default function Conversations() {
       fetchConversations();
     }
   }, [cachedConversations.length]);
+
+  useEffect(() => {
+    const checkContentHeight = () => {
+      if (contentRef.current) {
+        const isOverflowing =
+          contentRef.current.scrollHeight > contentRef.current.clientHeight;
+        setShowArrow(isOverflowing);
+      }
+    };
+
+    checkContentHeight();
+    window.addEventListener("resize", checkContentHeight);
+
+    return () => {
+      window.removeEventListener("resize", checkContentHeight);
+    };
+  }, [cachedConversations]);
 
   const createNewConversation = () => {
     setCurrentConversation(null);
@@ -126,11 +145,16 @@ export default function Conversations() {
 
   return (
     <motion.div
-      className="flex flex-col gap-2 px-3 py-3 bg-white dark:bg-gray-800 rounded-2xl shadow-md"
+      className="max-h-96 flex flex-col gap-2 px-3 py-3 bg-white dark:bg-gray-800 rounded-2xl shadow-md relative"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeInOut" }}
     >
+      {showArrow && (
+        <div className="absolute bottom-3 right-3">
+          <ArrowDown size={18} className="text-gray-500 dark:text-gray-400" />
+        </div>
+      )}
       <button
         onClick={createNewConversation}
         className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200"
@@ -143,11 +167,15 @@ export default function Conversations() {
           <LoadingScreen size="small" />
         </div>
       ) : (
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <div
+          ref={contentRef}
+          className="space-y-2 max-h-[60vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        >
           {cachedConversations.map((conversation) => (
             <div
               key={conversation._id}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 group ${
+              onClick={() => setCurrentConversation(conversation)}
+              className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 group ${
                 currentConversation?._id === conversation._id
                   ? "bg-gray-100 dark:bg-gray-700"
                   : "hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -187,10 +215,7 @@ export default function Conversations() {
                 </div>
               ) : (
                 <>
-                  <button
-                    onClick={() => setCurrentConversation(conversation)}
-                    className="flex-1 text-left text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors duration-200 truncate"
-                  >
+                  <button className="flex-1 text-left text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors duration-200 truncate">
                     {conversation.title}
                   </button>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-2">
