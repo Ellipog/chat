@@ -8,6 +8,12 @@ import { useChatContext } from "@/context/context";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { Use } from "@/lib/uselessUse";
 import { FileAttachment } from "@/types/chat";
+import * as pdfjs from "pdfjs-dist";
+
+// Configure PDF.js worker
+if (typeof window !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+}
 
 // Allowed file types that OpenAI can process
 const ALLOWED_FILE_TYPES = {
@@ -16,7 +22,7 @@ const ALLOWED_FILE_TYPES = {
   "image/png": true,
   "image/gif": true,
   "image/webp": true,
-  // Documents
+  // Documents that will be converted to images
   "application/pdf": true,
   "text/plain": true,
   "text/csv": true,
@@ -24,6 +30,106 @@ const ALLOWED_FILE_TYPES = {
 };
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB limit
+
+// Helper function to convert PDF to image
+async function convertPDFToImage(file: File): Promise<File[]> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const images: File[] = [];
+
+  for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 20); pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({
+      canvasContext: context!,
+      viewport: viewport,
+    }).promise;
+
+    const imageBlob = await new Promise<Blob>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob!), "image/png", 0.95);
+    });
+
+    const imageFile = new File(
+      [imageBlob],
+      `${file.name.replace(/\.[^/.]+$/, "")}_page_${pageNum}.png`,
+      { type: "image/png" }
+    );
+    images.push(imageFile);
+  }
+
+  return images;
+}
+
+// Helper function to convert text to image
+async function convertTextToImage(file: File): Promise<File> {
+  const text = await file.text();
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d")!;
+
+  // Set canvas size
+  const fontSize = 16;
+  const lineHeight = fontSize * 1.2;
+  const padding = 20;
+  const maxWidth = 800;
+
+  // Split text into lines
+  context.font = `${fontSize}px Arial`;
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const metrics = context.measureText(testLine);
+
+    if (metrics.width > maxWidth - padding * 2) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  lines.push(currentLine);
+
+  // Set canvas dimensions
+  canvas.width = maxWidth;
+  canvas.height = lines.length * lineHeight + padding * 2;
+
+  // Draw background
+  context.fillStyle = "white";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw text
+  context.fillStyle = "black";
+  context.font = `${fontSize}px Arial`;
+  lines.forEach((line, i) => {
+    context.fillText(line, padding, padding + (i + 1) * lineHeight);
+  });
+
+  const imageBlob = await new Promise<Blob>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob!), "image/png", 0.95);
+  });
+
+  return new File([imageBlob], `${file.name.replace(/\.[^/.]+$/, "")}.png`, {
+    type: "image/png",
+  });
+}
+
+// Helper function to convert any file to image
+async function convertFileToImage(file: File): Promise<File[]> {
+  if (file.type === "application/pdf") {
+    return convertPDFToImage(file);
+  } else if (["text/plain", "text/csv", "text/markdown"].includes(file.type)) {
+    return [await convertTextToImage(file)];
+  }
+  return [file];
+}
 
 export default function ChatInput() {
   const [message, setMessage] = useState("");
@@ -90,7 +196,15 @@ export default function ChatInput() {
     if (!selectedFiles.length) return [];
 
     const formData = new FormData();
-    selectedFiles.forEach((file) => {
+
+    // Convert files to images if needed
+    const convertedFiles: File[] = [];
+    for (const file of selectedFiles) {
+      const converted = await convertFileToImage(file);
+      convertedFiles.push(...converted);
+    }
+
+    convertedFiles.forEach((file) => {
       formData.append("files", file);
     });
 
