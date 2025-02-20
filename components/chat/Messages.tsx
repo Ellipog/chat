@@ -73,6 +73,9 @@ export default function ChatMessages() {
       return;
     }
 
+    // Clear messages immediately when switching conversations
+    setLocalMessages([]);
+
     // If we have cached messages for this conversation, use them
     if (cachedMessages[currentConversation._id]?.length > 0) {
       // Ensure we're not mixing temporary messages with cached ones
