@@ -43,6 +43,7 @@ export default function Auth() {
           name: data.user.name,
           email: data.user.email,
           id: data.user.id,
+          userInfo: data.user.userInfo,
         });
         setIsLoggedIn(true);
         localStorage.setItem("token", data.token);
