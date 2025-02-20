@@ -4,10 +4,7 @@ import Conversation from "@/models/Conversation";
 import jwt from "jsonwebtoken";
 import Message from "@/models/Message";
 
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(req: Request, context: { params: { id: string } }) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     if (!token) {
@@ -24,8 +21,10 @@ export async function PUT(
     };
     await connectToDatabase();
 
+    const { id } = await context.params;
+
     const conversation = await Conversation.findOne({
-      _id: params.id,
+      _id: id,
       user: decoded.id,
     });
 

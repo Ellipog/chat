@@ -4,6 +4,7 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 import { motion } from "framer-motion";
 import { Edit2, Trash2, Plus, Check, X } from "lucide-react";
 import TextInput from "@/components/ui/TextInput";
+import ConfirmationModal from "@/components/ui/ConfirmationModal";
 
 export interface Conversation {
   _id: string;
@@ -14,6 +15,9 @@ export default function Conversations() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(
+    null
+  );
   const {
     currentConversation,
     setCurrentConversation,
@@ -258,7 +262,7 @@ export default function Conversations() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteConversation(conversation._id);
+                      setDeleteConfirmation(conversation._id);
                     }}
                     className="p-1 hover:bg-gray-100 rounded"
                   >
@@ -270,6 +274,18 @@ export default function Conversations() {
           </motion.div>
         ))}
       </div>
+      <ConfirmationModal
+        isOpen={deleteConfirmation !== null}
+        onClose={() => setDeleteConfirmation(null)}
+        onConfirm={() => {
+          if (deleteConfirmation) {
+            deleteConversation(deleteConfirmation);
+            setDeleteConfirmation(null);
+          }
+        }}
+        title="Delete Conversation"
+        message="Are you sure you want to delete this conversation? This action cannot be undone."
+      />
     </motion.div>
   );
 }

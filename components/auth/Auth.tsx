@@ -116,7 +116,7 @@ export default function Auth() {
           <motion.button
             type="submit"
             disabled={isLoading}
-            className="w-full py-2 px-4 bg-gray-800 text-white rounded-2xl hover:bg-gray-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative"
+            className="w-full py-2 px-4 h-10 bg-gray-800 text-white rounded-2xl hover:bg-gray-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >

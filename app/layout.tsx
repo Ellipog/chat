@@ -5,6 +5,9 @@ import { ChatProvider } from "@/context/context";
 export const metadata: Metadata = {
   title: "Chat",
   description: "AI chatbot by Elliot",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({
