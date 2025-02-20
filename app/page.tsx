@@ -10,7 +10,11 @@ export default function Home() {
   const { isLoggedIn, isLoading } = useChatContext();
 
   if (isLoading) {
-    return <LoadingScreen />;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <LoadingScreen />
+      </div>
+    );
   }
 
   return isLoggedIn ? (
